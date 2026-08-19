@@ -1,0 +1,94 @@
+services:
+  caddy:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: caddy-crowdsec-ratelimit:latest
+    container_name: caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      # Tells Caddy which network to proxy traffic through for auto-discovery
+      - CADDY_INGRESS_NETWORKS=caddy_net
+    networks:
+      - caddy_net
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro # REQUIRED for label auto-discovery
+      - caddy_data:/data
+      - caddy_config:/config
+      - ./caddy_logs:/var/log/caddy # Shared logs volume for CrowdSec
+    
+    # GLOBAL CADDY CONFIGURATION VIA DOCKER LABELS (NO CADDYFILE REQUIRED)
+    labels:
+      # Enable caddy-docker-proxy on this instance
+      caddy_docker_proxy: "true"
+
+      # 1. Global Admin Email for ACME SSL (Let's Encrypt / ZeroSSL)
+      caddy.email: "${CADDY_EMAIL:-you@example.com}"
+
+      # 2. Global Logging Configuration for CrowdSec Log Acquisition
+      caddy.log.output: "file /var/log/caddy/access.log"
+      caddy.log.format: "json"
+      caddy.log.level: "INFO"
+
+      # 3. Global Directive Order (CRITICAL for security pipeline execution)
+      # Evaluates CrowdSec ban check -> Rate Limit -> Reverse Proxy
+      caddy.order.0: "crowdsec before rate_limit"
+      caddy.order.1: "rate_limit before reverse_proxy"
+
+      # 4. CrowdSec Bouncer Global Configuration Block
+      caddy.crowdsec.api_url: "http://crowdsec:8080"
+      caddy.crowdsec.api_key: "${CROWDSEC_BOUNCER_API_KEY:-KfnTpZHSXbPjeAWo5SV6ys9Q2rCrLuL2JruedJ6DeTs}"
+      # Uncomment if using CrowdSec AppSec WAF feature:
+      # caddy.crowdsec.appsec_url: "http://crowdsec:7422"
+
+  crowdsec:
+    image: crowdsecurity/crowdsec:latest
+    container_name: crowdsec
+    restart: unless-stopped
+    environment:
+      - COLLECTIONS=crowdsecurity/caddy crowdsecurity/appsec-virtual-patching crowdsecurity/appsec-generic-rules
+      # Listen on all interfaces inside caddy_net
+      - CROWDSEC_LAPI_LISTEN_URI=0.0.0.0:8080
+      # Uncomment if using AppSec WAF:
+      # - CROWDSEC_APPSEC_LISTEN_URI=0.0.0.0:7422
+    networks:
+      - caddy_net
+    volumes:
+      - ./crowdsec-db:/var/lib/crowdsec/data
+      - ./crowdsec-config:/etc/crowdsec
+      - ./crowdsec-config/acquis.yaml:/etc/crowdsec/acquis.yaml
+      - ./caddy_logs:/var/log/caddy:ro
+
+  # EXAMPLE BACKEND SERVICE WITH RATE LIMITING & CROWDSEC VIA DOCKER LABELS (NO CADDYFILE)
+  whoami:
+    image: traefik/whoami
+    container_name: whoami_demo
+    restart: unless-stopped
+    networks:
+      - caddy_net
+    labels:
+      # Domain / Hostname for this service
+      caddy: "whoami.example.com"
+
+      # Enable CrowdSec bouncer protection on this host
+      caddy.crowdsec: ""
+
+      # Configure Rate Limiting: 10 requests per 10 seconds per IP address
+      caddy.rate_limit.zone.whoami_zone.key: "{remote_host}"
+      caddy.rate_limit.zone.whoami_zone.events: "10"
+      caddy.rate_limit.zone.whoami_zone.window: "10s"
+
+      # Forward traffic to container port 80
+      caddy.reverse_proxy: "{{upstreams 80}}"
+
+networks:
+  caddy_net:
+    external: true
+
+volumes:
+  caddy_data:
+  caddy_config:
+  crowdsec-db:
