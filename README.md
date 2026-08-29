@@ -154,3 +154,31 @@ docker compose restart caddy
   for i in {1..15}; do curl -i https://whoami.example.com; done
   ```
   Requests exceeding the limit will receive `HTTP/2 429 Too Many Requests`.
+
+---
+
+## 📊 Optional: Observability & Log Aggregator Stack
+
+An optional monitoring stack is available in [`docker-compose.monitoring.yml`](file:///home/strangemint/docker-containers/caddy-crowdsec/docker-compose.monitoring.yml):
+* **Grafana Loki**: Log aggregation backend for Caddy & CrowdSec logs.
+* **Promtail**: Log shipper scraping structured JSON access logs from `./caddy_logs/access.log`.
+* **Prometheus**: Metrics collector scraping Caddy (`:2019/metrics`) and CrowdSec (`:6060/metrics`).
+* **Grafana**: Pre-provisioned dashboards for metrics and log exploration, routed automatically through Caddy with SSL.
+
+### 1. Launch Monitoring Stack
+```bash
+# Start standalone alongside running Caddy stack:
+docker compose -f docker-compose.monitoring.yml up -d
+
+# Or start together with core stack:
+docker compose -f docker-compose.yml -f docker-compose.monitoring.yml up -d
+```
+
+### 2. Access Grafana
+Navigate to `https://${GRAFANA_DOMAIN}` (default: `https://grafana.example.com`).
+* Data sources (`Prometheus` and `Loki`) are pre-configured automatically.
+* Recommended Grafana Dashboards to import via **Dashboards > Import**:
+  * **Caddy Metrics Dashboard**: `13462`
+  * **CrowdSec Official Dashboard**: `14620`
+* Explore logs in Grafana **Explore** tab using query: `{job="caddy"}`.
+

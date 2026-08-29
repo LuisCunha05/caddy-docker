@@ -28,17 +28,20 @@ services:
       # 1. Global Admin Email for ACME SSL (Let's Encrypt / ZeroSSL)
       caddy.email: "${CADDY_EMAIL:-you@example.com}"
 
-      # 2. Global Logging Configuration for CrowdSec Log Acquisition
+      # 2. Expose internal Admin & Metrics endpoint for Prometheus
+      caddy.admin: "0.0.0.0:2019"
+
+      # 3. Global Logging Configuration for CrowdSec Log Acquisition
       caddy.log.output: "file /var/log/caddy/access.log"
       caddy.log.format: "json"
       caddy.log.level: "INFO"
 
-      # 3. Global Directive Order (CRITICAL for security pipeline execution)
+      # 4. Global Directive Order (CRITICAL for security pipeline execution)
       # Evaluates CrowdSec ban check -> Rate Limit -> Reverse Proxy
       caddy.order_0: "crowdsec before rate_limit"
       caddy.order_1: "rate_limit before reverse_proxy"
 
-      # 4. CrowdSec Bouncer Global Configuration Block
+      # 5. CrowdSec Bouncer Global Configuration Block
       caddy.crowdsec.api_url: "http://crowdsec:8080"
       caddy.crowdsec.api_key: "${CROWDSEC_BOUNCER_API_KEY:-KfnTpZHSXbPjeAWo5SV6ys9Q2rCrLuL2JruedJ6DeTs}"
       # Uncomment if using CrowdSec AppSec WAF feature:
