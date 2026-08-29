@@ -25,8 +25,8 @@ labels:
   caddy.log.level: "INFO"
 
   # Execution Order: Ensure CrowdSec and Rate Limiting execute before Reverse Proxying
-  caddy.order.0: "crowdsec before rate_limit"
-  caddy.order.1: "rate_limit before reverse_proxy"
+  caddy.order_0: "crowdsec before rate_limit"
+  caddy.order_1: "rate_limit before reverse_proxy"
 
   # CrowdSec LAPI Bouncer configuration
   caddy.crowdsec.api_url: "http://crowdsec:8080"
@@ -34,8 +34,9 @@ labels:
 ```
 
 ### 2. Protecting Application Services
-To expose and protect any container (e.g. `whoami`, `wordpress`, `nextcloud`, etc.), simply attach `caddy` labels to that container:
+To expose and protect any container (e.g. `whoami`, `portainer`, `wordpress`, `nextcloud`, etc.), attach `caddy` labels to that container.
 
+#### A. Basic Service Protection (Global Rate Limiting)
 ```yaml
 services:
   myapp:
@@ -50,12 +51,38 @@ services:
       caddy.crowdsec: ""
 
       # Configure Rate Limiting (e.g., 20 requests per 10 seconds per IP)
-      caddy.rate_limit.zone.myapp_limit.key: "{remote_host}"
-      caddy.rate_limit.zone.myapp_limit.events: "20"
-      caddy.rate_limit.zone.myapp_limit.window: "10s"
+      caddy.rate_limit.zone: "myapp_limit"
+      caddy.rate_limit.zone.key: "{remote_host}"
+      caddy.rate_limit.zone.events: "20"
+      caddy.rate_limit.zone.window: "10s"
 
       # Proxy traffic to port 80 of this container
       caddy.reverse_proxy: "{{upstreams 80}}"
+```
+
+#### B. Endpoint & Method Specific Rate Limiting (e.g. Login / Brute Force Protection)
+To protect sensitive endpoints (such as `POST /api/auth*` or `POST /login`) against brute force attacks without throttling static assets (HTML/CSS/JS) or regular dashboard navigation, use the `match` subdirectives:
+
+```yaml
+services:
+  portainer:
+    image: portainer/portainer-ce:latest
+    networks:
+      - caddy_net
+    labels:
+      caddy: "portainer.example.com"
+      caddy.crowdsec: ""
+
+      # Rate limit ONLY POST requests to the login endpoint (5 attempts per minute)
+      caddy.rate_limit.zone: "portainer_login"
+      caddy.rate_limit.zone.match.path: "/api/auth*"
+      caddy.rate_limit.zone.match.method: "POST"
+      caddy.rate_limit.zone.key: "{remote_host}"
+      caddy.rate_limit.zone.events: "5"
+      caddy.rate_limit.zone.window: "1m"
+
+      # Proxy traffic to internal container port
+      caddy.reverse_proxy: "{{upstreams 9000}}"
 ```
 
 ---
@@ -74,12 +101,28 @@ Copy `.env.example` to `.env`:
 cp .env.example .env
 ```
 
-### 3. Build & Launch Containers
+### 3. CrowdSec Log Acquisition (`crowdsec-config/acquis.yaml`)
+Ensure [crowdsec-config/acquis.yaml](file:///home/strangemint/docker-containers/caddy-crowdsec/crowdsec-config/acquis.yaml) exists so CrowdSec automatically monitors Caddy's JSON access logs:
+
+```yaml
+filenames:
+  - /var/log/caddy/access.log
+labels:
+  type: caddy
+```
+
+> [!NOTE]
+> If you add or modify `acquis.yaml` while the containers are already running, reload CrowdSec to apply the changes:
+> ```bash
+> docker compose restart crowdsec
+> ```
+
+### 4. Build & Launch Containers
 ```bash
 docker compose up -d --build
 ```
 
-### 4. Generate CrowdSec Bouncer API Key
+### 5. Generate CrowdSec Bouncer API Key
 Once CrowdSec is running, create the bouncer key for Caddy:
 ```bash
 docker exec -t crowdsec cscli bouncers add caddy-bouncer
@@ -100,6 +143,10 @@ docker compose restart caddy
 - **View active CrowdSec bouncers:**
   ```bash
   docker exec crowdsec cscli bouncers list
+  ```
+- **Check CrowdSec log acquisition & parsing metrics:**
+  ```bash
+  docker exec crowdsec cscli metrics
   ```
 - **Test Rate Limiting:**
   Run a burst test against your app:
