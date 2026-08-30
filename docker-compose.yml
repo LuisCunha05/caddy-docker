@@ -8,7 +8,8 @@ services:
     restart: unless-stopped
     ports:
       - "80:80"
-      - "443:443"
+      - "443:443/tcp"
+      - "443:443/udp"
     environment:
       # Tells Caddy which network to proxy traffic through for auto-discovery
       - CADDY_INGRESS_NETWORKS=caddy_net
@@ -19,14 +20,14 @@ services:
       - caddy_data:/data
       - caddy_config:/config
       - ./caddy_logs:/var/log/caddy # Shared logs volume for CrowdSec
-    
+
     # GLOBAL CADDY CONFIGURATION VIA DOCKER LABELS (NO CADDYFILE REQUIRED)
     labels:
       # Enable caddy-docker-proxy on this instance
       caddy_docker_proxy: "true"
 
       # 1. Global Admin Email for ACME SSL (Let's Encrypt / ZeroSSL)
-      caddy.email: "${CADDY_EMAIL:-you@example.com}"
+      caddy.email: "${EMAIL_TLS}"
 
       # 2. Expose internal Admin & Metrics endpoint for Prometheus
       caddy.admin: "0.0.0.0:2019"
@@ -43,12 +44,12 @@ services:
 
       # 5. CrowdSec Bouncer Global Configuration Block
       caddy.crowdsec.api_url: "http://crowdsec:8080"
-      caddy.crowdsec.api_key: "${CROWDSEC_BOUNCER_API_KEY:-KfnTpZHSXbPjeAWo5SV6ys9Q2rCrLuL2JruedJ6DeTs}"
+      caddy.crowdsec.api_key: "${CROWDSEC_BOUNCER_API_KEY}"
       # Uncomment if using CrowdSec AppSec WAF feature:
       # caddy.crowdsec.appsec_url: "http://crowdsec:7422"
 
   crowdsec:
-    image: crowdsecurity/crowdsec:latest
+    image: crowdsecurity/crowdsec:${CROWDSEC_VERSION}
     container_name: crowdsec
     restart: unless-stopped
     environment:
@@ -73,7 +74,7 @@ services:
       - caddy_net
     labels:
       # Domain / Hostname for this service
-      caddy: "whoami.example.com"
+      caddy: "whoami.${DOMAIN}"
 
       # Enable CrowdSec bouncer protection on this host
       caddy.crowdsec: ""
