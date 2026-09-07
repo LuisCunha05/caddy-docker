@@ -1,28 +1,18 @@
 services:
-  # --- LOGGING: Grafana Loki ---
-  loki:
-    image: grafana/loki:${LOKI_VERSION}
-    container_name: loki
-    restart: unless-stopped
-    command: -config.file=/etc/loki/local-config.yaml
-    networks:
-      - caddy_net
-    volumes:
-      - loki_data:/loki
-
-  # --- LOG SHIPPER: Promtail ---
-  promtail:
-    image: grafana/promtail:${PROMTAIL_VERSION}
-    container_name: promtail
-    restart: unless-stopped
-    volumes:
-      - ./promtail/promtail-config.yml:/etc/promtail/promtail-config.yml:ro
-      - ./caddy_logs:/var/log/caddy:ro
-    command: -config.file=/etc/promtail/promtail-config.yml
-    networks:
-      - caddy_net
-    depends_on:
-      - loki
+  cadvisor:
+     image: ghcr.io/google/cadvisor:latest
+     privileged: true
+     devices:
+       - /dev/kmsg
+     volumes:
+       - /:/rootfs:ro
+       - /var/run:/var/run:ro
+       - /sys:/sys:ro
+       - /var/lib/docker/:/var/lib/docker:ro
+       - /dev/disk/:/dev/disk:ro
+     restart: unless-stopped
+     networks:
+      - monitoring_net
 
   # --- METRICS: Prometheus ---
   prometheus:
@@ -38,7 +28,7 @@ services:
       - '--web.console.libraries=/usr/share/prometheus/console_libraries'
       - '--web.console.templates=/usr/share/prometheus/consoles'
     networks:
-      - caddy_net
+      - monitoring_net
 
   # --- VISUALIZATION: Grafana (Exposed & Protected via Caddy) ---
   grafana:
@@ -54,6 +44,7 @@ services:
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
     networks:
       - caddy_net
+      - monitoring_net
     labels:
       # Expose Grafana under your domain with automatic SSL & CrowdSec
       caddy: "grafana.${DOMAIN}"
@@ -61,10 +52,11 @@ services:
       caddy.reverse_proxy: "{{upstreams 3000}}"
 
 networks:
+  monitoring_net:
+    external: true
   caddy_net:
     external: true
 
 volumes:
-  loki_data:
   prometheus_data:
   grafana_data:

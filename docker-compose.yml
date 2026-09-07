@@ -15,6 +15,7 @@ services:
       - CADDY_INGRESS_NETWORKS=caddy_net
     networks:
       - caddy_net
+      - monitoring_net
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro # REQUIRED for label auto-discovery
       - caddy_data:/data
@@ -25,6 +26,7 @@ services:
     labels:
       # Enable caddy-docker-proxy on this instance
       caddy_docker_proxy: "true"
+      caddy.metrics.per_host: ""
 
       # 1. Global Admin Email for ACME SSL (Let's Encrypt / ZeroSSL)
       caddy.email: "${EMAIL_TLS}"
@@ -46,7 +48,7 @@ services:
       caddy.crowdsec.api_url: "http://crowdsec:8080"
       caddy.crowdsec.api_key: "${CROWDSEC_BOUNCER_API_KEY}"
       # Uncomment if using CrowdSec AppSec WAF feature:
-      # caddy.crowdsec.appsec_url: "http://crowdsec:7422"
+      caddy.crowdsec.appsec_url: "http://crowdsec:7422"
 
   crowdsec:
     image: crowdsecurity/crowdsec:${CROWDSEC_VERSION}
@@ -57,39 +59,19 @@ services:
       # Listen on all interfaces inside caddy_net
       - CROWDSEC_LAPI_LISTEN_URI=0.0.0.0:8080
       # Uncomment if using AppSec WAF:
-      # - CROWDSEC_APPSEC_LISTEN_URI=0.0.0.0:7422
+      - CROWDSEC_APPSEC_LISTEN_URI=0.0.0.0:7422
     networks:
-      - caddy_net
+      - monitoring_net
     volumes:
       - ./crowdsec-db:/var/lib/crowdsec/data
       - ./crowdsec-config:/etc/crowdsec
       - ./caddy_logs:/var/log/caddy:ro
 
-  # EXAMPLE BACKEND SERVICE WITH RATE LIMITING & CROWDSEC VIA DOCKER LABELS (NO CADDYFILE)
-  whoami:
-    image: traefik/whoami
-    container_name: whoami_demo
-    restart: unless-stopped
-    networks:
-      - caddy_net
-    labels:
-      # Domain / Hostname for this service
-      caddy: "whoami.${DOMAIN}"
-
-      # Enable CrowdSec bouncer protection on this host
-      caddy.crowdsec: ""
-
-      # Configure Rate Limiting: 10 requests per 10 seconds per IP address
-      caddy.rate_limit.zone: "whoami_zone"
-      caddy.rate_limit.zone.key: "{remote_host}"
-      caddy.rate_limit.zone.events: "10"
-      caddy.rate_limit.zone.window: "10s"
-
-      # Forward traffic to container port 80
-      caddy.reverse_proxy: "{{upstreams 80}}"
 
 networks:
   caddy_net:
+    external: true
+  monitoring_net:
     external: true
 
 volumes:

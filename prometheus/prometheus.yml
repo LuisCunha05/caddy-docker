@@ -10,3 +10,7 @@ scrape_configs:
   - job_name: 'crowdsec'
     static_configs:
       - targets: ['crowdsec:6060']
+
+  - job_name: 'cadvisor'
+    static_configs:
+      - targets: ['cadvisor:8080']
